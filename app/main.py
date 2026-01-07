@@ -4,6 +4,8 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
+import importlib.util
+
 from app.core.logging import LogBuffer, configure_logger
 from app.core.schemas import TradingConfig
 from app.core.storage import ConfigStorage
@@ -13,7 +15,8 @@ from app.trading.backtest import Backtester
 
 app = FastAPI(title="Agente de Trading ICT")
 
-templates = Jinja2Templates(directory="app/dashboard/templates")
+_jinja_available = importlib.util.find_spec("jinja2") is not None
+templates = Jinja2Templates(directory="app/dashboard/templates") if _jinja_available else None
 
 log_buffer = LogBuffer()
 logger = configure_logger(log_buffer)
@@ -26,6 +29,14 @@ backtester = Backtester()
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request) -> HTMLResponse:
     current_config = storage.load()
+    if templates is None:
+        return HTMLResponse(
+            content=(
+                "<html><body><h1>Jinja2 não instalado.</h1>"
+                "<p>Instale dependências com <code>pip install -r requirements.txt</code> "
+                "para carregar o dashboard completo.</p></body></html>"
+            )
+        )
     return templates.TemplateResponse(
         "index.html",
         {
