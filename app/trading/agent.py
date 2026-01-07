@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import random
 from datetime import datetime
 from typing import Dict, List
 
@@ -26,6 +27,11 @@ class TradingAgent:
         self.running = False
         self.last_decisions: List[AgentDecision] = []
         self._task: asyncio.Task | None = None
+        self._feed = DataFeed(
+            [asset.symbol for asset in config.assets],
+            sorted({tf for asset in config.assets for tf in asset.timeframes}),
+        )
+        self._open_positions: Dict[str, Dict[str, float]] = {}
         self._strategies = {
             "order_blocks": OrderBlockDetector(),
             "fvg": FVGDetector(),
@@ -53,6 +59,10 @@ class TradingAgent:
 
     def update_config(self, config: TradingConfig) -> None:
         self.config = config
+        self._feed.sync(
+            [asset.symbol for asset in config.assets],
+            sorted({tf for asset in config.assets for tf in asset.timeframes}),
+        )
         self.logger.add("Configurações atualizadas via dashboard.")
 
     async def _run_loop(self) -> None:
@@ -63,8 +73,8 @@ class TradingAgent:
     async def _tick(self) -> None:
         symbols = [asset.symbol for asset in self.config.assets]
         timeframes = sorted({tf for asset in self.config.assets for tf in asset.timeframes})
-        feed = DataFeed(symbols, timeframes)
-        data = feed.fetch_latest()
+        self._feed.sync(symbols, timeframes)
+        data = self._feed.fetch_latest()
         for symbol, frames in data.items():
             for timeframe, candles in frames.items():
                 enabled = [key for key, enabled in self.config.strategies.model_dump().items() if enabled]
@@ -80,8 +90,11 @@ class TradingAgent:
                 if decision:
                     self.last_decisions.append(decision)
                     self.last_decisions = self.last_decisions[-10:]
+                    if decision.action in {"buy", "sell"}:
+                        self._simulate_trade(symbol, decision.action, candles)
                 else:
                     self.logger.add(f"{symbol} [{timeframe}] sem sinais relevantes no momento.")
+        self._advance_positions()
 
     def _evaluate_symbol(self, symbol: str, timeframe: str, candles: pd.DataFrame) -> AgentDecision | None:
         enabled = self.config.strategies.model_dump()
@@ -91,11 +104,14 @@ class TradingAgent:
                 signals.extend(detector.detect(candles))
         if not signals:
             return None
+        bullish = sum(1 for signal in signals if signal.direction == "bullish")
+        bearish = sum(1 for signal in signals if signal.direction == "bearish")
+        action = "buy" if bullish >= bearish else "sell"
         reason = "Confluência de sinais ICT identificada." 
         decision = AgentDecision(
             symbol=symbol,
             timeframe=timeframe,
-            action="monitor",
+            action=action,
             reason=reason,
             signals=signals,
         )
@@ -107,7 +123,43 @@ class TradingAgent:
     def _current_bias(self, candles: pd.DataFrame) -> str:
         if candles.empty:
             return "Neutro (dados insuficientes)"
+        sma = candles["close"].rolling(20).mean().iloc[-1]
+        last = candles["close"].iloc[-1]
+        if last > sma:
+            return "Alta"
+        if last < sma:
+            return "Baixa"
         return "Neutro"
+
+    def _simulate_trade(self, symbol: str, action: str, candles: pd.DataFrame) -> None:
+        if symbol in self._open_positions:
+            return
+        last_price = float(candles["close"].iloc[-1])
+        stop_loss = last_price * (0.98 if action == "buy" else 1.02)
+        take_profit = last_price * (1.02 if action == "buy" else 0.98)
+        self._open_positions[symbol] = {
+            "entry": last_price,
+            "stop": stop_loss,
+            "target": take_profit,
+            "age": 0.0,
+            "side": 1.0 if action == "buy" else -1.0,
+        }
+        self.trade_logger.add_trade(
+            f"ABRIU POSIÇÃO: {symbol} {action.upper()} @ {last_price:.2f} | SL {stop_loss:.2f} | TP {take_profit:.2f}"
+        )
+
+    def _advance_positions(self) -> None:
+        to_close = []
+        for symbol, position in self._open_positions.items():
+            position["age"] += 1
+            if position["age"] >= 3:
+                to_close.append(symbol)
+        for symbol in to_close:
+            position = self._open_positions.pop(symbol)
+            pnl = random.uniform(-1.5, 2.5)
+            self.trade_logger.add_trade(
+                f"FECHOU POSIÇÃO: {symbol} resultado {pnl:.2f}% (simulado)."
+            )
 
     def log_trade_event(self, message: str) -> None:
         self.trade_logger.add_trade(message)
@@ -122,7 +174,20 @@ class TradingAgent:
         )
 
     def _positions_snapshot(self) -> List[PositionSnapshot]:
-        return []
+        snapshots = []
+        for symbol, position in self._open_positions.items():
+            snapshots.append(
+                PositionSnapshot(
+                    symbol=symbol,
+                    side="buy" if position["side"] > 0 else "sell",
+                    entry_price=position["entry"],
+                    stop_loss=position["stop"],
+                    take_profit=position["target"],
+                    unrealized_pnl=0.0,
+                    duration_minutes=int(position["age"] * self.config.dashboard.refresh_seconds),
+                )
+            )
+        return snapshots
 
     def _performance_snapshot(self) -> PerformanceSnapshot:
         return PerformanceSnapshot(
