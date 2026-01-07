@@ -90,6 +90,7 @@
       </div>
       <div class="row" style="margin-top: 8px;">
         <button onclick="runBacktest()">Rodar backtest</button>
+        <button class="secondary" onclick="runBacktest30d()">Backtest 30 dias</button>
         <button class="secondary" onclick="trainAgent()">Treinar IA</button>
       </div>
       <pre id="performance" style="margin-top: 12px;"></pre>
@@ -237,6 +238,12 @@
       const response = await fetch('/api/actions/backtest', { method: 'POST' });
       const data = await response.json();
       alert(`Backtest concluído. Trades: ${data.trades}`);
+    }
+
+    async function runBacktest30d() {
+      const response = await fetch('/api/actions/backtest-30d', { method: 'POST' });
+      const data = await response.json();
+      alert(`Backtest 30 dias concluído. Trades: ${data.trades}`);
     }
 
     async function trainAgent() {

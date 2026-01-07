@@ -5,6 +5,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 import importlib.util
+from datetime import datetime, timedelta
 
 from app.core.logging import LogBuffer, TradeLogBuffer, configure_logger
 from app.core.schemas import TradingConfig
@@ -98,6 +99,18 @@ async def test_connection() -> dict:
 async def run_backtest() -> dict:
     logger.info("Backtest iniciado via dashboard.")
     result = backtester.run(agent.config.backtest, [])
+    return result.__dict__
+
+
+@app.post("/api/actions/backtest-30d")
+async def run_backtest_30d() -> dict:
+    logger.info("Backtest de 30 dias iniciado via dashboard.")
+    end_date = datetime.utcnow().date()
+    start_date = end_date - timedelta(days=30)
+    config = agent.config.backtest.model_copy(
+        update={"start_date": start_date.isoformat(), "end_date": end_date.isoformat()}
+    )
+    result = backtester.run(config, [])
     return result.__dict__
 
 

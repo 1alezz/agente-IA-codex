@@ -68,9 +68,14 @@ class TradingAgent:
         for symbol, frames in data.items():
             for timeframe, candles in frames.items():
                 enabled = [key for key, enabled in self.config.strategies.model_dump().items() if enabled]
-                self.logger.add(
-                    f"{symbol} [{timeframe}] observando mercado, buscando sinais: {', '.join(enabled)}."
-                )
+                bias = self._current_bias(candles)
+                checklist = [
+                    f"Ativo: {symbol}",
+                    f"Timeframe: {timeframe}",
+                    f"Bias: {bias}",
+                    f"Observando: {', '.join(enabled) if enabled else 'nenhuma estratégia ativa'}",
+                ]
+                self.logger.add(" | ".join(checklist))
                 decision = self._evaluate_symbol(symbol, timeframe, candles)
                 if decision:
                     self.last_decisions.append(decision)
@@ -98,6 +103,11 @@ class TradingAgent:
             f"{symbol} [{timeframe}] sinais detectados ({len(signals)}). Decisão: {decision.action}."
         )
         return decision
+
+    def _current_bias(self, candles: pd.DataFrame) -> str:
+        if candles.empty:
+            return "Neutro (dados insuficientes)"
+        return "Neutro"
 
     def log_trade_event(self, message: str) -> None:
         self.trade_logger.add_trade(message)
