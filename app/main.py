@@ -1,0 +1,90 @@
+from __future__ import annotations
+
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+
+from app.core.logging import LogBuffer, configure_logger
+from app.core.schemas import TradingConfig
+from app.core.storage import ConfigStorage
+from app.trading.agent import TradingAgent
+from app.trading.backtest import Backtester
+
+
+app = FastAPI(title="Agente de Trading ICT")
+
+templates = Jinja2Templates(directory="app/dashboard/templates")
+
+log_buffer = LogBuffer()
+logger = configure_logger(log_buffer)
+storage = ConfigStorage()
+config = storage.load()
+agent = TradingAgent(config, log_buffer)
+backtester = Backtester()
+
+
+@app.get("/", response_class=HTMLResponse)
+async def dashboard(request: Request) -> HTMLResponse:
+    current_config = storage.load()
+    return templates.TemplateResponse(
+        "index.html",
+        {
+            "request": request,
+            "config": current_config,
+        },
+    )
+
+
+@app.get("/api/config")
+async def get_config() -> TradingConfig:
+    return storage.load()
+
+
+@app.post("/api/config")
+async def update_config(payload: TradingConfig) -> TradingConfig:
+    storage.save(payload)
+    agent.update_config(payload)
+    return payload
+
+
+@app.post("/api/agent/start")
+async def start_agent() -> dict:
+    agent.start()
+    return {"status": "started"}
+
+
+@app.post("/api/agent/stop")
+async def stop_agent() -> dict:
+    agent.stop()
+    return {"status": "stopped"}
+
+
+@app.get("/api/status")
+async def status() -> dict:
+    return agent.status().model_dump()
+
+
+@app.get("/api/logs")
+async def logs() -> dict:
+    return {"entries": log_buffer.list()}
+
+
+@app.post("/api/actions/test-connection")
+async def test_connection() -> dict:
+    if not agent.config.binance.api_key or not agent.config.binance.api_secret:
+        raise HTTPException(status_code=400, detail="API key/secret não configuradas.")
+    logger.info("Teste de conexão solicitado via dashboard.")
+    return {"status": "ok"}
+
+
+@app.post("/api/actions/backtest")
+async def run_backtest() -> dict:
+    logger.info("Backtest iniciado via dashboard.")
+    result = backtester.run(agent.config.backtest, [])
+    return result.__dict__
+
+
+@app.post("/api/actions/train")
+async def train_agent() -> dict:
+    logger.info("Treinamento RL iniciado via dashboard.")
+    return {"status": "training", "message": "Treinamento em progresso."}
