@@ -19,6 +19,11 @@ source .venv/bin/activate
 pip install -e .
 ```
 
+Ou, se preferir instalar via `requirements.txt`:
+```bash
+pip install -r requirements.txt
+```
+
 ## Configuração
 1. Copie o arquivo de exemplo:
 ```bash
