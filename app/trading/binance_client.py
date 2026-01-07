@@ -26,6 +26,22 @@ class BinanceClient:
         }
         return self._signed_request("POST", "/api/v3/order", params)
 
+    def get_account(self) -> Dict[str, Any]:
+        params = {
+            "timestamp": int(time.time() * 1000),
+            "recvWindow": 5000,
+        }
+        return self._signed_request("GET", "/api/v3/account", params)
+
+    def get_exchange_info(self, symbol: str) -> Dict[str, Any]:
+        response = httpx.get(
+            f"{self.base_url}/api/v3/exchangeInfo",
+            params={"symbol": symbol},
+            timeout=10,
+        )
+        response.raise_for_status()
+        return response.json()
+
     def _signed_request(self, method: str, path: str, params: Dict[str, Any]) -> Dict[str, Any]:
         query = urlencode(params)
         signature = hmac.new(self.api_secret.encode(), query.encode(), hashlib.sha256).hexdigest()

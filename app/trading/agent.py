@@ -153,14 +153,17 @@ class TradingAgent:
         }
         if self._client:
             try:
-                response = self._client.place_market_order(symbol, action, quantity=0.001)
+                quantity = self._calculate_position_size(symbol, last_price, stop_loss)
+                if quantity <= 0:
+                    raise ValueError("Quantidade calculada inválida.")
+                response = self._client.place_market_order(symbol, action, quantity=quantity)
                 order_id = response.get("orderId", "N/A")
                 self.trade_logger.add_trade(
-                    f"ORDEM TESTNET: {symbol} {action.upper()} enviada (ID {order_id})."
+                    f"ORDEM {symbol} {action.upper()} enviada (ID {order_id}) qty {quantity:.6f}."
                 )
             except Exception as exc:  # noqa: BLE001
                 self.trade_logger.add_trade(
-                    f"ERRO AO ENVIAR ORDEM TESTNET {symbol} {action.upper()}: {exc}"
+                    f"ERRO AO ENVIAR ORDEM {symbol} {action.upper()}: {exc}"
                 )
         self.trade_logger.add_trade(
             f"ABRIU POSIÇÃO: {symbol} {action.upper()} @ {last_price:.2f} | SL {stop_loss:.2f} | TP {take_profit:.2f}"
@@ -190,6 +193,38 @@ class TradingAgent:
             api_secret=config.binance.api_secret,
             use_testnet=config.binance.use_testnet,
         )
+
+    def _calculate_position_size(self, symbol: str, price: float, stop_loss: float) -> float:
+        if not self._client:
+            return 0.0
+        account = self._client.get_account()
+        quote_balance = 0.0
+        for asset in account.get("balances", []):
+            if asset.get("asset") == "USDT":
+                quote_balance = float(asset.get("free", 0.0))
+                break
+        risk_amount = quote_balance * (self.config.risk.risk_per_trade_pct / 100.0)
+        risk_per_unit = abs(price - stop_loss)
+        if risk_per_unit <= 0:
+            return 0.0
+        risk_quantity = risk_amount / risk_per_unit
+        max_exposure = quote_balance * (self.config.risk.max_exposure_per_asset_pct / 100.0)
+        exposure_quantity = max_exposure / price if price else 0.0
+        quantity = min(risk_quantity, exposure_quantity)
+        filters = self._client.get_exchange_info(symbol)
+        step_size = 0.0
+        min_qty = 0.0
+        symbol_info = filters.get("symbols", [{}])[0]
+        for item in symbol_info.get("filters", []):
+            if item.get("filterType") == "LOT_SIZE":
+                step_size = float(item.get("stepSize", 0.0))
+                min_qty = float(item.get("minQty", 0.0))
+                break
+        if step_size:
+            quantity = (quantity // step_size) * step_size
+        if min_qty and quantity < min_qty:
+            raise ValueError("Quantidade calculada abaixo do mínimo permitido.")
+        return max(quantity, 0.0)
 
     def status(self) -> AgentStatus:
         return AgentStatus(
