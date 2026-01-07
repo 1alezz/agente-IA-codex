@@ -1,0 +1,24 @@
+[project]
+name = "mexc-smc-ai"
+version = "0.1.0"
+description = "SMC/ICT signal engine with Streamlit dashboard for MEXC crypto data."
+requires-python = ">=3.11"
+dependencies = [
+  "numpy>=1.26",
+  "pandas>=2.1",
+  "pyyaml>=6.0",
+  "requests>=2.31",
+  "streamlit>=1.32",
+  "plotly>=5.18",
+  "scikit-learn>=1.4",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
