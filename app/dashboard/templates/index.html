@@ -11,7 +11,7 @@
     .card { background: #111827; padding: 16px; border-radius: 12px; border: 1px solid #1f2937; }
     .badge { padding: 4px 8px; border-radius: 6px; background: #1d4ed8; font-size: 12px; }
     label { display: block; margin-top: 8px; font-size: 14px; }
-    input, select { width: 100%; padding: 6px; margin-top: 4px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; }
+    input, select, textarea { width: 100%; padding: 6px; margin-top: 4px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; }
     button { background: #2563eb; color: white; border: none; padding: 8px 12px; border-radius: 8px; cursor: pointer; }
     button.secondary { background: #334155; }
     .log { max-height: 200px; overflow-y: auto; font-family: monospace; font-size: 12px; background: #0b1120; padding: 8px; border-radius: 8px; }
@@ -42,6 +42,13 @@
         <button onclick="saveConfig()">Salvar</button>
         <button class="secondary" onclick="testConnection()">Testar conexão</button>
       </div>
+    </div>
+
+    <div class="card">
+      <h2>Ativos e Timeframes</h2>
+      <label>Lista de ativos (um por linha no formato BTCUSDT:5m,1h)
+        <textarea id="assets" rows="6" style="width: 100%;"></textarea>
+      </label>
     </div>
 
     <div class="card">
@@ -92,6 +99,11 @@
       <h2>Logs em tempo real</h2>
       <div id="log-container" class="log"></div>
     </div>
+
+    <div class="card">
+      <h2>Logs de Operações</h2>
+      <div id="trade-log-container" class="log"></div>
+    </div>
   </div>
 
   <script>
@@ -113,14 +125,21 @@
           checkbox.checked = currentConfig.strategies[key];
         }
       });
+
+      const assetsInput = currentConfig.assets
+        .map(asset => `${asset.symbol}:${asset.timeframes.join(',')}`)
+        .join('\n');
+      document.getElementById('assets').value = assetsInput;
     }
 
     async function saveConfig() {
       if (!currentConfig) return;
       const apiKey = document.getElementById('api-key').value;
       const apiSecret = document.getElementById('api-secret').value;
+      const assets = parseAssetsInput(document.getElementById('assets').value);
       const updated = {
         ...currentConfig,
+        assets,
         binance: {
           ...currentConfig.binance,
           api_key: apiKey || currentConfig.binance.api_key,
@@ -156,6 +175,21 @@
       alert('Configurações salvas.');
     }
 
+    function parseAssetsInput(value) {
+      return value
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0)
+        .map(line => {
+          const [symbol, timeframesRaw] = line.split(':');
+          const timeframes = timeframesRaw ? timeframesRaw.split(',').map(tf => tf.trim()) : [];
+          return {
+            symbol: symbol.trim(),
+            timeframes: timeframes.length ? timeframes : ['5m'],
+          };
+        });
+    }
+
     async function refreshStatus() {
       const response = await fetch('/api/status');
       const status = await response.json();
@@ -169,6 +203,13 @@
       const response = await fetch('/api/logs');
       const logs = await response.json();
       const container = document.getElementById('log-container');
+      container.innerHTML = logs.entries.map(entry => `<div>${entry}</div>`).join('');
+    }
+
+    async function refreshTradeLogs() {
+      const response = await fetch('/api/trade-logs');
+      const logs = await response.json();
+      const container = document.getElementById('trade-log-container');
       container.innerHTML = logs.entries.map(entry => `<div>${entry}</div>`).join('');
     }
 
@@ -207,9 +248,11 @@
     loadConfig();
     refreshStatus();
     refreshLogs();
+    refreshTradeLogs();
     setInterval(() => {
       refreshStatus();
       refreshLogs();
+      refreshTradeLogs();
     }, 5000);
   </script>
 </body>

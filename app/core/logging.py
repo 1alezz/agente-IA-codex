@@ -18,6 +18,11 @@ class LogBuffer:
         return list(self._entries)
 
 
+class TradeLogBuffer(LogBuffer):
+    def add_trade(self, message: str) -> None:
+        self.add(message)
+
+
 def configure_logger(buffer: LogBuffer) -> logging.Logger:
     logger = logging.getLogger("trading_agent")
     logger.setLevel(logging.INFO)

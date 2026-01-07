@@ -6,7 +6,7 @@ from fastapi.templating import Jinja2Templates
 
 import importlib.util
 
-from app.core.logging import LogBuffer, configure_logger
+from app.core.logging import LogBuffer, TradeLogBuffer, configure_logger
 from app.core.schemas import TradingConfig
 from app.core.storage import ConfigStorage
 from app.trading.agent import TradingAgent
@@ -19,10 +19,11 @@ _jinja_available = importlib.util.find_spec("jinja2") is not None
 templates = Jinja2Templates(directory="app/dashboard/templates") if _jinja_available else None
 
 log_buffer = LogBuffer()
+trade_log_buffer = TradeLogBuffer()
 logger = configure_logger(log_buffer)
 storage = ConfigStorage()
 config = storage.load()
-agent = TradingAgent(config, log_buffer)
+agent = TradingAgent(config, log_buffer, trade_log_buffer)
 backtester = Backtester()
 
 
@@ -78,6 +79,11 @@ async def status() -> dict:
 @app.get("/api/logs")
 async def logs() -> dict:
     return {"entries": log_buffer.list()}
+
+
+@app.get("/api/trade-logs")
+async def trade_logs() -> dict:
+    return {"entries": trade_log_buffer.list()}
 
 
 @app.post("/api/actions/test-connection")

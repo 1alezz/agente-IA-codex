@@ -6,7 +6,7 @@ from typing import Dict, List
 
 import pandas as pd
 
-from app.core.logging import LogBuffer
+from app.core.logging import LogBuffer, TradeLogBuffer
 from app.core.schemas import AgentDecision, AgentStatus, PerformanceSnapshot, PositionSnapshot, StrategySignal, TradingConfig
 from app.trading.datafeed import DataFeed
 from app.trading.strategies.fvg import FVGDetector
@@ -19,9 +19,10 @@ from app.trading.strategies.turtle_soup import TurtleSoupDetector
 
 
 class TradingAgent:
-    def __init__(self, config: TradingConfig, logger: LogBuffer) -> None:
+    def __init__(self, config: TradingConfig, logger: LogBuffer, trade_logger: TradeLogBuffer) -> None:
         self.config = config
         self.logger = logger
+        self.trade_logger = trade_logger
         self.running = False
         self.last_decisions: List[AgentDecision] = []
         self._task: asyncio.Task | None = None
@@ -66,10 +67,16 @@ class TradingAgent:
         data = feed.fetch_latest()
         for symbol, frames in data.items():
             for timeframe, candles in frames.items():
+                enabled = [key for key, enabled in self.config.strategies.model_dump().items() if enabled]
+                self.logger.add(
+                    f"{symbol} [{timeframe}] observando mercado, buscando sinais: {', '.join(enabled)}."
+                )
                 decision = self._evaluate_symbol(symbol, timeframe, candles)
                 if decision:
                     self.last_decisions.append(decision)
                     self.last_decisions = self.last_decisions[-10:]
+                else:
+                    self.logger.add(f"{symbol} [{timeframe}] sem sinais relevantes no momento.")
 
     def _evaluate_symbol(self, symbol: str, timeframe: str, candles: pd.DataFrame) -> AgentDecision | None:
         enabled = self.config.strategies.model_dump()
@@ -91,6 +98,9 @@ class TradingAgent:
             f"{symbol} [{timeframe}] sinais detectados ({len(signals)}). Decisão: {decision.action}."
         )
         return decision
+
+    def log_trade_event(self, message: str) -> None:
+        self.trade_logger.add_trade(message)
 
     def status(self) -> AgentStatus:
         return AgentStatus(
