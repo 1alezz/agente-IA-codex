@@ -4,17 +4,21 @@ from typing import Dict, List
 
 import numpy as np
 import pandas as pd
+import httpx
 
 
 class DataFeed:
-    def __init__(self, symbols: List[str], timeframes: List[str]) -> None:
+    def __init__(self, symbols: List[str], timeframes: List[str], use_testnet: bool = True) -> None:
         self.symbols = symbols
         self.timeframes = timeframes
+        self.use_testnet = use_testnet
         self._cache: Dict[str, Dict[str, pd.DataFrame]] = {}
 
-    def sync(self, symbols: List[str], timeframes: List[str]) -> None:
+    def sync(self, symbols: List[str], timeframes: List[str], use_testnet: bool | None = None) -> None:
         self.symbols = symbols
         self.timeframes = timeframes
+        if use_testnet is not None:
+            self.use_testnet = use_testnet
         for symbol in symbols:
             self._cache.setdefault(symbol, {})
             for timeframe in timeframes:
@@ -23,10 +27,51 @@ class DataFeed:
 
     def fetch_latest(self) -> Dict[str, Dict[str, pd.DataFrame]]:
         self.sync(self.symbols, self.timeframes)
+        if self.use_testnet:
+            live = self._fetch_live()
+            if live:
+                return live
         for symbol in self.symbols:
             for timeframe in self.timeframes:
                 self._cache[symbol][timeframe] = self._append_candle(self._cache[symbol][timeframe])
         return self._cache
+
+    def _fetch_live(self) -> Dict[str, Dict[str, pd.DataFrame]]:
+        base_url = "https://testnet.binance.vision" if self.use_testnet else "https://api.binance.com"
+        data: Dict[str, Dict[str, pd.DataFrame]] = {}
+        for symbol in self.symbols:
+            data[symbol] = {}
+            for timeframe in self.timeframes:
+                candles = self._fetch_klines(base_url, symbol, timeframe)
+                if candles is not None:
+                    data[symbol][timeframe] = candles
+                else:
+                    data[symbol][timeframe] = self._cache.get(symbol, {}).get(timeframe, self._seed_candles())
+        self._cache = data
+        return data
+
+    def _fetch_klines(self, base_url: str, symbol: str, interval: str) -> pd.DataFrame | None:
+        url = f"{base_url}/api/v3/klines"
+        params = {"symbol": symbol, "interval": interval, "limit": 120}
+        try:
+            response = httpx.get(url, params=params, timeout=10)
+            response.raise_for_status()
+        except httpx.HTTPError:
+            return None
+        payload = response.json()
+        if not payload:
+            return None
+        rows = [
+            {
+                "open": float(item[1]),
+                "high": float(item[2]),
+                "low": float(item[3]),
+                "close": float(item[4]),
+                "volume": float(item[5]),
+            }
+            for item in payload
+        ]
+        return pd.DataFrame(rows)
 
     def _seed_candles(self, count: int = 80) -> pd.DataFrame:
         prices = np.cumsum(np.random.normal(loc=0.0, scale=1.2, size=count)) + 100.0

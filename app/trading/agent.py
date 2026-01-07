@@ -9,6 +9,7 @@ import pandas as pd
 
 from app.core.logging import LogBuffer, TradeLogBuffer
 from app.core.schemas import AgentDecision, AgentStatus, PerformanceSnapshot, PositionSnapshot, StrategySignal, TradingConfig
+from app.trading.binance_client import BinanceClient
 from app.trading.datafeed import DataFeed
 from app.trading.strategies.fvg import FVGDetector
 from app.trading.strategies.liquidity import LiquiditySweepDetector
@@ -30,8 +31,10 @@ class TradingAgent:
         self._feed = DataFeed(
             [asset.symbol for asset in config.assets],
             sorted({tf for asset in config.assets for tf in asset.timeframes}),
+            use_testnet=config.binance.use_testnet,
         )
         self._open_positions: Dict[str, Dict[str, float]] = {}
+        self._client = self._build_client(config)
         self._strategies = {
             "order_blocks": OrderBlockDetector(),
             "fvg": FVGDetector(),
@@ -48,6 +51,8 @@ class TradingAgent:
         self.running = True
         self._task = asyncio.create_task(self._run_loop())
         self.logger.add("Agente iniciado e monitorando mercado em modo continuo.")
+        if self.config.binance.use_testnet and not self._client:
+            self.logger.add("Aviso: chaves da Binance não configuradas. Ordens não serão enviadas.")
 
     def stop(self) -> None:
         if not self.running:
@@ -59,9 +64,11 @@ class TradingAgent:
 
     def update_config(self, config: TradingConfig) -> None:
         self.config = config
+        self._client = self._build_client(config)
         self._feed.sync(
             [asset.symbol for asset in config.assets],
             sorted({tf for asset in config.assets for tf in asset.timeframes}),
+            use_testnet=config.binance.use_testnet,
         )
         self.logger.add("Configurações atualizadas via dashboard.")
 
@@ -73,7 +80,7 @@ class TradingAgent:
     async def _tick(self) -> None:
         symbols = [asset.symbol for asset in self.config.assets]
         timeframes = sorted({tf for asset in self.config.assets for tf in asset.timeframes})
-        self._feed.sync(symbols, timeframes)
+        self._feed.sync(symbols, timeframes, use_testnet=self.config.binance.use_testnet)
         data = self._feed.fetch_latest()
         for symbol, frames in data.items():
             for timeframe, candles in frames.items():
@@ -91,7 +98,7 @@ class TradingAgent:
                     self.last_decisions.append(decision)
                     self.last_decisions = self.last_decisions[-10:]
                     if decision.action in {"buy", "sell"}:
-                        self._simulate_trade(symbol, decision.action, candles)
+                        self._execute_trade(symbol, decision.action, candles)
                 else:
                     self.logger.add(f"{symbol} [{timeframe}] sem sinais relevantes no momento.")
         self._advance_positions()
@@ -131,7 +138,7 @@ class TradingAgent:
             return "Baixa"
         return "Neutro"
 
-    def _simulate_trade(self, symbol: str, action: str, candles: pd.DataFrame) -> None:
+    def _execute_trade(self, symbol: str, action: str, candles: pd.DataFrame) -> None:
         if symbol in self._open_positions:
             return
         last_price = float(candles["close"].iloc[-1])
@@ -144,6 +151,17 @@ class TradingAgent:
             "age": 0.0,
             "side": 1.0 if action == "buy" else -1.0,
         }
+        if self._client:
+            try:
+                response = self._client.place_market_order(symbol, action, quantity=0.001)
+                order_id = response.get("orderId", "N/A")
+                self.trade_logger.add_trade(
+                    f"ORDEM TESTNET: {symbol} {action.upper()} enviada (ID {order_id})."
+                )
+            except Exception as exc:  # noqa: BLE001
+                self.trade_logger.add_trade(
+                    f"ERRO AO ENVIAR ORDEM TESTNET {symbol} {action.upper()}: {exc}"
+                )
         self.trade_logger.add_trade(
             f"ABRIU POSIÇÃO: {symbol} {action.upper()} @ {last_price:.2f} | SL {stop_loss:.2f} | TP {take_profit:.2f}"
         )
@@ -158,11 +176,20 @@ class TradingAgent:
             position = self._open_positions.pop(symbol)
             pnl = random.uniform(-1.5, 2.5)
             self.trade_logger.add_trade(
-                f"FECHOU POSIÇÃO: {symbol} resultado {pnl:.2f}% (simulado)."
+                f"FECHOU POSIÇÃO: {symbol} resultado {pnl:.2f}%."
             )
 
     def log_trade_event(self, message: str) -> None:
         self.trade_logger.add_trade(message)
+
+    def _build_client(self, config: TradingConfig) -> BinanceClient | None:
+        if not config.binance.api_key or not config.binance.api_secret:
+            return None
+        return BinanceClient(
+            api_key=config.binance.api_key,
+            api_secret=config.binance.api_secret,
+            use_testnet=config.binance.use_testnet,
+        )
 
     def status(self) -> AgentStatus:
         return AgentStatus(
