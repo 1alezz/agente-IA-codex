@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import pandas as pd
 
 from app.core.models import Candle
+from app.core.logger import get_logger, log_event
 from app.core.logger import get_logger
 from app.data.mexc_client import MexcClient
 
@@ -39,6 +40,12 @@ def normalize_klines(symbol: str, timeframe: str, klines: list) -> pd.DataFrame:
 
 
 def fetch_candles(client: MexcClient, symbol: str, timeframe: str, limit: int = 200) -> pd.DataFrame:
+    log_event(
+        LOGGER,
+        "fetch_candles",
+        message="Buscando candles",
+        symbol=symbol,
+        timeframe=timeframe,
     LOGGER.info(
         "fetch_candles",
         extra={"message": "Buscando candles", "symbol": symbol, "timeframe": timeframe},

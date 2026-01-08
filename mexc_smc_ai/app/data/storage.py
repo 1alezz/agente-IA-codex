@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from app.core.logger import get_logger, log_event
 from app.core.logger import get_logger
 
 
@@ -15,4 +16,5 @@ def save_history(path: str, frame: pd.DataFrame) -> None:
     db_path = Path(path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
     frame.to_csv(db_path, index=False)
+    log_event(LOGGER, "history_saved", message="Histórico salvo", path=str(db_path))
     LOGGER.info("history_saved", extra={"message": "Histórico salvo", "path": str(db_path)})

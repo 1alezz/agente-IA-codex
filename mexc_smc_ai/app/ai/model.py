@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from app.core.logger import get_logger, log_event
 from app.core.logger import get_logger
 
 
@@ -22,6 +23,12 @@ class LogisticRegressionModel(BaseModel):
             self.model = LogisticRegression()
             self.trained = False
         except Exception as exc:
+            log_event(
+                LOGGER,
+                "model_init_failed",
+                message="Falha ao iniciar LogisticRegression",
+                error=str(exc),
+                level="warning",
             LOGGER.warning(
                 "model_init_failed",
                 extra={"message": "Falha ao iniciar LogisticRegression", "error": str(exc)},
@@ -45,5 +52,11 @@ class LogisticRegressionModel(BaseModel):
 def build_model(model_type: str) -> BaseModel:
     if model_type == "logistic_regression":
         return LogisticRegressionModel()
+    log_event(
+        LOGGER,
+        "unknown_model",
+        message="Modelo desconhecido, usando fallback",
+        level="warning",
+    )
     LOGGER.warning("unknown_model", extra={"message": "Modelo desconhecido, usando fallback"})
     return LogisticRegressionModel()

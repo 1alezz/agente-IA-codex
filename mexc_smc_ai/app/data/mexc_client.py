@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import requests
 
 from app.core.config import env
+from app.core.logger import get_logger, log_event
 from app.core.logger import get_logger
 
 
@@ -26,6 +27,12 @@ class MexcClient:
             try:
                 response = requests.get(url, params=params, timeout=self.timeout)
                 if response.status_code == 429:
+                    log_event(
+                        LOGGER,
+                        "rate_limit",
+                        message="Rate limit atingido",
+                        attempt=attempt,
+                        level="warning",
                     LOGGER.warning(
                         "rate_limit",
                         extra={"message": "Rate limit atingido", "attempt": attempt},
@@ -35,6 +42,12 @@ class MexcClient:
                 response.raise_for_status()
                 return response.json()
             except requests.RequestException as exc:
+                log_event(
+                    LOGGER,
+                    "request_failed",
+                    message="Falha ao requisitar MEXC",
+                    error=str(exc),
+                    level="error",
                 LOGGER.error(
                     "request_failed",
                     extra={"message": "Falha ao requisitar MEXC", "error": str(exc)},

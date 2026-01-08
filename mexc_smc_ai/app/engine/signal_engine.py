@@ -9,6 +9,7 @@ import pandas as pd
 from app.ai.decision import decide
 from app.ai.features import build_features
 from app.ai.model import build_model
+from app.core.logger import get_logger, log_event
 from app.core.logger import get_logger
 from app.core.models import Signal
 from app.core.state import EngineState
@@ -139,6 +140,15 @@ class SignalEngine:
                         "reason": decision.reason,
                     }
                 )
+                log_event(
+                    LOGGER,
+                    "signal_generated",
+                    message="Sinal gerado",
+                    symbol=symbol,
+                    timeframe=timeframe,
+                    profile=profile,
+                    direction=direction,
+                    decision=decision.action,
                 LOGGER.info(
                     "signal_generated",
                     extra={
