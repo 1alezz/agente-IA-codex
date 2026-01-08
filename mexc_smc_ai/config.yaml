@@ -1,0 +1,55 @@
+engine:
+  polling_seconds: 15
+  cooldown_minutes: 30
+  max_signals_per_ob: 1
+
+symbols:
+  - BTCUSDT
+  - ETHUSDT
+
+timeframes:
+  higher_tf: ["1h", "4h"]
+  execution_tf: ["15m"]
+
+order_block:
+  pivot_left: 3
+  pivot_right: 3
+  range_mode: "wick"  # wick|body
+  min_move_atr: 1.2
+  min_move_pct: 0.4
+  min_impulse_candles: 2
+  invalidate_on_wick: true
+
+confluence:
+  require_rsi_divergence: true
+  require_volume_spike: true
+  volume_sma_period: 20
+  volume_spike_mult: 1.5
+  require_bias_alignment: true
+
+risk:
+  atr_period: 14
+  stop_atr_buffer: 0.5
+  trailing_atr_mult: 1.2
+
+profiles:
+  scalping:
+    enabled: true
+    target_atr: [0.5, 1.5]
+    ai_threshold: 0.6
+  daytrade:
+    enabled: true
+    target_atr: [1.5, 3.0]
+    ai_threshold: 0.55
+  swing:
+    enabled: true
+    target_atr: [3.0, 8.0]
+    ai_threshold: 0.5
+
+ai:
+  model_type: "logistic_regression"
+  min_probability: 0.5
+
+storage:
+  enabled: false
+  path: "data/history.db"
