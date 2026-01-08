@@ -4,6 +4,7 @@ from __future__ import annotations
 import time
 
 from app.core.logger import get_logger, log_event
+from app.core.logger import get_logger
 from app.engine.signal_engine import SignalEngine
 
 
@@ -26,5 +27,8 @@ class EngineScheduler:
                     message="Erro no ciclo da engine",
                     error=str(exc),
                     level="error",
+                LOGGER.error(
+                    "engine_cycle_failed",
+                    extra={"message": "Erro no ciclo da engine", "error": str(exc)},
                 )
             time.sleep(self.polling_seconds)

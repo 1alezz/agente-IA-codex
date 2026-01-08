@@ -11,6 +11,9 @@ from typing import Any
 class JsonFormatter(logging.Formatter):
     RESERVED_KEYS = set(logging.LogRecord("", 0, "", 0, "", (), None).__dict__.keys()) | {"message"}
 
+
+
+class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         payload = {
             "timestamp": datetime.utcnow().isoformat(),
@@ -22,6 +25,9 @@ class JsonFormatter(logging.Formatter):
             if key in self.RESERVED_KEYS:
                 continue
             payload[key] = value
+        extra = getattr(record, "extra", None)
+        if isinstance(extra, dict):
+            payload.update(extra)
         return json.dumps(payload, ensure_ascii=False)
 
 

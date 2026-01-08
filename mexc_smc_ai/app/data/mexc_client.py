@@ -8,6 +8,7 @@ import requests
 
 from app.core.config import env
 from app.core.logger import get_logger, log_event
+from app.core.logger import get_logger
 
 
 LOGGER = get_logger(__name__)
@@ -32,6 +33,9 @@ class MexcClient:
                         message="Rate limit atingido",
                         attempt=attempt,
                         level="warning",
+                    LOGGER.warning(
+                        "rate_limit",
+                        extra={"message": "Rate limit atingido", "attempt": attempt},
                     )
                     time.sleep(self.backoff_seconds * attempt)
                     continue
@@ -44,6 +48,9 @@ class MexcClient:
                     message="Falha ao requisitar MEXC",
                     error=str(exc),
                     level="error",
+                LOGGER.error(
+                    "request_failed",
+                    extra={"message": "Falha ao requisitar MEXC", "error": str(exc)},
                 )
                 time.sleep(self.backoff_seconds * attempt)
         raise RuntimeError("Falha após tentativas na MEXC")

@@ -8,6 +8,7 @@ import subprocess
 from app.engine.signal_engine import SignalEngine
 from app.engine.scheduler import EngineScheduler
 from app.core.logger import get_logger, log_event
+from app.core.logger import get_logger
 from app.core.state import EngineState
 from app.core.config import load_config
 
@@ -21,11 +22,13 @@ def run_engine() -> None:
     engine = SignalEngine(config=config, state=state)
     scheduler = EngineScheduler(engine=engine, polling_seconds=config["engine"]["polling_seconds"])
     log_event(LOGGER, "engine_start", message="Iniciando engine de sinais", component="engine")
+    LOGGER.info("engine_start", extra={"message": "Iniciando engine de sinais"})
     scheduler.run()
 
 
 def run_streamlit() -> None:
     log_event(LOGGER, "ui_start", message="Abrindo Streamlit", component="ui")
+    LOGGER.info("ui_start", extra={"message": "Abrindo Streamlit"})
     streamlit_cmd = [
         "streamlit",
         "run",
