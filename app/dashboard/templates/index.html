@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dashboard - Agente ICT</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; background: #0f172a; color: #e2e8f0; }
+    h1 { margin-bottom: 8px; }
+    .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+    .card { background: #111827; padding: 16px; border-radius: 12px; border: 1px solid #1f2937; }
+    .badge { padding: 4px 8px; border-radius: 6px; background: #1d4ed8; font-size: 12px; }
+    label { display: block; margin-top: 8px; font-size: 14px; }
+    input, select, textarea { width: 100%; padding: 6px; margin-top: 4px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; }
+    button { background: #2563eb; color: white; border: none; padding: 8px 12px; border-radius: 8px; cursor: pointer; }
+    button.secondary { background: #334155; }
+    .log { max-height: 260px; overflow-y: auto; font-family: "SFMono-Regular", Consolas, monospace; font-size: 12px; background: #0b1120; padding: 12px; border-radius: 10px; border: 1px solid #1e293b; }
+    .log h3 { margin: 0 0 8px 0; font-size: 14px; }
+    .log-list { list-style: none; padding-left: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+    .log-item { padding: 6px 8px; border-radius: 6px; background: rgba(30, 41, 59, 0.6); border: 1px solid #1f2937; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .row button { flex: 1; }
+  </style>
+</head>
+<body>
+  <h1>Agente de Trading Automatizado (ICT + RL)</h1>
+  <p>Status: <span id="agent-status" class="badge">Carregando</span></p>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Configurações Binance</h2>
+      <label>API Key
+        <input id="api-key" type="password" placeholder="********" />
+      </label>
+      <label>API Secret
+        <input id="api-secret" type="password" placeholder="********" />
+      </label>
+      <label>Modo
+        <select id="use-testnet">
+          <option value="true">Testnet</option>
+          <option value="false">Real</option>
+        </select>
+      </label>
+      <div class="row" style="margin-top: 12px;">
+        <button onclick="saveConfig()">Salvar</button>
+        <button class="secondary" onclick="testConnection()">Testar conexão</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Ativos e Timeframes</h2>
+      <label>Lista de ativos (um por linha no formato BTCUSDT:5m,1h)
+        <textarea id="assets" rows="6" style="width: 100%;"></textarea>
+      </label>
+    </div>
+
+    <div class="card">
+      <h2>Estratégias ICT</h2>
+      <label><input type="checkbox" id="order_blocks" /> Order Blocks</label>
+      <label><input type="checkbox" id="fvg" /> FVG/Imbalances</label>
+      <label><input type="checkbox" id="liquidity_sweeps" /> Liquidity Sweeps</label>
+      <label><input type="checkbox" id="rsi_divergence" /> RSI Divergence</label>
+      <label><input type="checkbox" id="market_structure" /> Estrutura de Mercado</label>
+      <label><input type="checkbox" id="turtle_soup" /> Turtle Soup</label>
+      <label><input type="checkbox" id="moving_average_filter" /> Filtro EMA</label>
+      <label><input type="checkbox" id="fibonacci_targets" /> Alvos Fibonacci</label>
+    </div>
+
+    <div class="card">
+      <h2>Gestão de Risco</h2>
+      <label>Risco por trade (%)
+        <input id="risk_per_trade_pct" type="number" step="0.1" />
+      </label>
+      <label>Drawdown máximo diário (%)
+        <input id="max_daily_drawdown_pct" type="number" step="0.1" />
+      </label>
+      <label>Perdas consecutivas máximas
+        <input id="max_consecutive_losses" type="number" step="1" />
+      </label>
+      <label>Exposição máxima por ativo (%)
+        <input id="max_exposure_per_asset_pct" type="number" step="1" />
+      </label>
+      <label>Alavancagem
+        <input id="leverage" type="number" step="0.5" />
+      </label>
+    </div>
+
+    <div class="card">
+      <h2>Operações</h2>
+      <div class="row">
+        <button onclick="startAgent()">Iniciar agente</button>
+        <button class="secondary" onclick="stopAgent()">Parar agente</button>
+      </div>
+      <div class="row" style="margin-top: 8px;">
+        <button onclick="runBacktest()">Rodar backtest</button>
+        <button class="secondary" onclick="runBacktest30d()">Backtest 30 dias</button>
+        <button class="secondary" onclick="trainAgent()">Treinar IA</button>
+      </div>
+      <pre id="performance" style="margin-top: 12px;"></pre>
+    </div>
+
+    <div class="card">
+      <h2>Logs em tempo real</h2>
+      <div id="log-container" class="log">
+        <h3>Checklist do Agente</h3>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Logs de Operações</h2>
+      <div id="trade-log-container" class="log">
+        <h3>Operações Abertas/Encerradas</h3>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentConfig = null;
+
+    async function loadConfig() {
+      const response = await fetch('/api/config');
+      currentConfig = await response.json();
+      document.getElementById('use-testnet').value = String(currentConfig.binance.use_testnet);
+      document.getElementById('risk_per_trade_pct').value = currentConfig.risk.risk_per_trade_pct;
+      document.getElementById('max_daily_drawdown_pct').value = currentConfig.risk.max_daily_drawdown_pct;
+      document.getElementById('max_consecutive_losses').value = currentConfig.risk.max_consecutive_losses;
+      document.getElementById('max_exposure_per_asset_pct').value = currentConfig.risk.max_exposure_per_asset_pct;
+      document.getElementById('leverage').value = currentConfig.risk.leverage;
+
+      Object.keys(currentConfig.strategies).forEach(key => {
+        const checkbox = document.getElementById(key);
+        if (checkbox) {
+          checkbox.checked = currentConfig.strategies[key];
+        }
+      });
+
+      const assetsInput = currentConfig.assets
+        .map(asset => `${asset.symbol}:${asset.timeframes.join(',')}`)
+        .join('\n');
+      document.getElementById('assets').value = assetsInput;
+    }
+
+    async function saveConfig() {
+      if (!currentConfig) return;
+      const apiKey = document.getElementById('api-key').value;
+      const apiSecret = document.getElementById('api-secret').value;
+      const assets = parseAssetsInput(document.getElementById('assets').value);
+      const updated = {
+        ...currentConfig,
+        assets,
+        binance: {
+          ...currentConfig.binance,
+          api_key: apiKey || currentConfig.binance.api_key,
+          api_secret: apiSecret || currentConfig.binance.api_secret,
+          use_testnet: document.getElementById('use-testnet').value === 'true',
+        },
+        risk: {
+          risk_per_trade_pct: parseFloat(document.getElementById('risk_per_trade_pct').value),
+          max_daily_drawdown_pct: parseFloat(document.getElementById('max_daily_drawdown_pct').value),
+          max_consecutive_losses: parseInt(document.getElementById('max_consecutive_losses').value, 10),
+          max_exposure_per_asset_pct: parseFloat(document.getElementById('max_exposure_per_asset_pct').value),
+          leverage: parseFloat(document.getElementById('leverage').value),
+        },
+        strategies: {
+          order_blocks: document.getElementById('order_blocks').checked,
+          fvg: document.getElementById('fvg').checked,
+          liquidity_sweeps: document.getElementById('liquidity_sweeps').checked,
+          rsi_divergence: document.getElementById('rsi_divergence').checked,
+          market_structure: document.getElementById('market_structure').checked,
+          turtle_soup: document.getElementById('turtle_soup').checked,
+          moving_average_filter: document.getElementById('moving_average_filter').checked,
+          fibonacci_targets: document.getElementById('fibonacci_targets').checked,
+        },
+      };
+      const response = await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated),
+      });
+      currentConfig = await response.json();
+      document.getElementById('api-key').value = '';
+      document.getElementById('api-secret').value = '';
+      alert('Configurações salvas.');
+    }
+
+    function parseAssetsInput(value) {
+      return value
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0)
+        .map(line => {
+          const [symbol, timeframesRaw] = line.split(':');
+          const timeframes = timeframesRaw ? timeframesRaw.split(',').map(tf => tf.trim()) : [];
+          return {
+            symbol: symbol.trim(),
+            timeframes: timeframes.length ? timeframes : ['5m'],
+          };
+        });
+    }
+
+    async function refreshStatus() {
+      const response = await fetch('/api/status');
+      const status = await response.json();
+      const badge = document.getElementById('agent-status');
+      badge.textContent = status.running ? `Rodando (${status.mode})` : `Parado (${status.mode})`;
+      badge.style.background = status.running ? '#16a34a' : '#dc2626';
+      document.getElementById('performance').textContent = JSON.stringify(status.performance, null, 2);
+    }
+
+    async function refreshLogs() {
+      const response = await fetch('/api/logs');
+      const logs = await response.json();
+      const container = document.getElementById('log-container');
+      const items = logs.entries.map(entry => `<li class="log-item">${entry}</li>`).join('');
+      container.innerHTML = `<h3>Checklist do Agente</h3><ul class="log-list">${items}</ul>`;
+    }
+
+    async function refreshTradeLogs() {
+      const response = await fetch('/api/trade-logs');
+      const logs = await response.json();
+      const container = document.getElementById('trade-log-container');
+      const items = logs.entries.map(entry => `<li class="log-item">${entry}</li>`).join('');
+      container.innerHTML = `<h3>Operações Abertas/Encerradas</h3><ul class="log-list">${items}</ul>`;
+    }
+
+    async function startAgent() {
+      await fetch('/api/agent/start', { method: 'POST' });
+      refreshStatus();
+    }
+
+    async function stopAgent() {
+      await fetch('/api/agent/stop', { method: 'POST' });
+      refreshStatus();
+    }
+
+    async function testConnection() {
+      const response = await fetch('/api/actions/test-connection', { method: 'POST' });
+      if (!response.ok) {
+        const data = await response.json();
+        alert(data.detail || 'Falha no teste.');
+        return;
+      }
+      alert('Conexão OK.');
+    }
+
+    async function runBacktest() {
+      const response = await fetch('/api/actions/backtest', { method: 'POST' });
+      const data = await response.json();
+      alert(`Backtest concluído. Trades: ${data.trades}`);
+    }
+
+    async function runBacktest30d() {
+      const response = await fetch('/api/actions/backtest-30d', { method: 'POST' });
+      const data = await response.json();
+      alert(`Backtest 30 dias concluído. Trades: ${data.trades}`);
+    }
+
+    async function trainAgent() {
+      const response = await fetch('/api/actions/train', { method: 'POST' });
+      const data = await response.json();
+      alert(data.message);
+    }
+
+    loadConfig();
+    refreshStatus();
+    refreshLogs();
+    refreshTradeLogs();
+    setInterval(() => {
+      refreshStatus();
+      refreshLogs();
+      refreshTradeLogs();
+    }, 5000);
+  </script>
+</body>
+</html>
